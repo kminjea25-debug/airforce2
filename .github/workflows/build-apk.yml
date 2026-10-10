@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -17,10 +17,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Configure Android SDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          sdkmanager --version
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -29,16 +33,22 @@ jobs:
       - name: Extract project ZIP
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name '*.zip' -print -quit)
-          test -n "$ZIP_FILE"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "프로젝트 ZIP 파일이 저장소 최상위에 없습니다."
+            exit 1
+          fi
           mkdir extracted
           unzip -q "$ZIP_FILE" -d extracted
+          PROJECT_DIR=$(find extracted -name settings.gradle -print -quit | xargs dirname)
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Build APK
         run: |
-          cd extracted/AirForceMockInterviewAndroid
+          cd "$PROJECT_DIR"
           gradle assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: airforce-mock-interview-apk
-          path: extracted/AirForceMockInterviewAndroid/app/build/outputs/apk/debug/app-debug.apk
+          path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
+
